@@ -1,0 +1,16 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: keycloak
+spec: 
+  commonName: "{{ keycloak.auth_subdomain }}.{{ domain_name }}"
+  dnsNames:
+    - "{{ keycloak.auth_subdomain }}.{{ domain_name }}"
+    {% if keycloak.management_route.enabled %}
+    - "{{ keycloak.management_route.subdomain }}.{{ domain_name }}"
+    {% endif %}
+
+  issuerRef:
+    name: "{{ cert_manager.issuer_name }}"
+    kind: "{{ cert_manager.issuer_kind | default('ClusterIssuer') }}"
+  secretName: keycloak-tls

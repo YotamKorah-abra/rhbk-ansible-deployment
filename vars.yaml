@@ -1,0 +1,20 @@
+deployment_namespace: site-1
+password_length: 32
+domain_name: apps.cluster-2lrzw.2lrzw.sandbox2247.opentlc.com
+
+cert_manager:
+  issuer_name: zerossl-production-ec2
+  issuer_kind: ClusterIssuer
+
+keycloak:
+  log_level: DEBUG
+  instances: 3
+  management_route:
+    enabled: false
+    subdomain: kc-admin
+  auth_subdomain: sso
+  additionalOptions:
+    - name: log-level
+      value: DEBUG
+
+disable_admin_password_change: false

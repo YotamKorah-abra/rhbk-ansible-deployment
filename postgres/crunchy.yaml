@@ -1,0 +1,63 @@
+apiVersion: postgres-operator.crunchydata.com/v1beta1
+kind: PostgresCluster
+metadata:
+  name: postgres-rhbk
+spec:
+  port: 5432
+  users:
+    - name: postgres
+      password:
+        type: ASCII
+    - databases:
+        - keycloak
+      password:
+        type: ASCII
+      name: keycloak
+  standby:
+    enabled: false
+  proxy:
+    pgBouncer:
+      port: 5432
+      service:
+        type: ClusterIP
+      replicas: 1
+  instrumentation:
+    logs:
+      batches:
+        maxDelay: 200ms
+        minRecords: 8192
+  backups:
+    pgbackrest:
+      repos:
+        - volume:
+            volumeClaimSpec:
+              resources:
+                requests:
+                  storage: 1Gi
+              accessModes:
+                - ReadWriteOnce
+          name: repo1
+      restore:
+        enabled: false
+        repoName: repo1
+  service:
+    type: ClusterIP
+  patroni:
+    leaderLeaseDurationSeconds: 30
+    logging:
+      level: INFO
+      storageLimit: 100Mi
+    port: 8008
+    syncPeriodSeconds: 10
+  replicaService:
+    type: ClusterIP
+  instances:
+    - dataVolumeClaimSpec:
+        resources:
+          requests:
+            storage: 1Gi
+        accessModes:
+          - ReadWriteOnce
+      replicas: 3
+  postgresVersion: 16
+  openshift: true

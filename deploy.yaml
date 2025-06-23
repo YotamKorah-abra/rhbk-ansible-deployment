@@ -1,0 +1,136 @@
+- name: Deploy Crunchy Cluster
+  hosts: localhost
+  gather_facts: no
+  collections:
+    - kubernetes.core
+  vars_files:
+    - vars.yaml
+  tasks:
+  - name: Create Crunchy Postgres Cluster
+    kubernetes.core.k8s:
+      state: present
+      src: postgres/crunchy.yaml
+      namespace: "{{ deployment_namespace }}"
+
+  - name: Get Postgres password
+    kubernetes.core.k8s_info:
+      kind: Secret
+      namespace: "{{ deployment_namespace }}"
+      name: postgres-rhbk-pguser-postgres
+    register: postgres_secret
+
+  - name: Wait for Postgres to be ready
+    kubernetes.core.k8s_info:
+      kind: PostgresCluster
+      api_version: postgres-operator.crunchydata.com/v1beta1
+      namespace: "{{ deployment_namespace }}"
+      name: postgres-rhbk
+    register: postgres_cluster
+    until: 
+      postgres_cluster.resources[0].status.instances and 
+      (postgres_cluster.resources[0].status.instances | length > 0) and
+      (postgres_cluster.resources[0].status.instances[0].readyReplicas is defined) and
+      (postgres_cluster.resources[0].status.instances[0].readyReplicas >= 1)
+    retries: 10
+    delay: 5
+
+  - name: Get Primary Postgres instance
+    kubernetes.core.k8s_info:
+      kind: Pod
+      namespace: "{{ deployment_namespace }}"
+      label_selectors:
+        - postgres-operator.crunchydata.com/data = postgres
+        - postgres-operator.crunchydata.com/cluster = postgres-rhbk
+        - postgres-operator.crunchydata.com/role = master
+    register: postgres_master
+
+  - name: Ensure Postgres master pod is found
+    ansible.builtin.assert:
+      that:
+        - postgres_master.resources | length > 0
+      fail_msg: "No Postgres master pod found"
+      success_msg: "Postgres master pod found: {{ postgres_master.resources[0].metadata.name }}"
+
+  - name: Create Keycloak schema in Postgres
+    kubernetes.core.k8s_exec:
+      namespace: "{{ deployment_namespace }}"
+      pod: "{{ postgres_master.resources[0].metadata.name }}"
+      command: >
+        psql --dbname=keycloak -c "CREATE SCHEMA IF NOT EXISTS rhbk; GRANT ALL ON SCHEMA rhbk TO keycloak;"
+    register: create_schema_result
+    changed_when: >
+      'schema "rhbk" already exists' not in create_schema_result.stderr
+      and 'GRANT' in create_schema_result.stdout
+      and 'CREATE SCHEMA' in create_schema_result.stdout
+
+- name: Deploy Keycloak
+  hosts: localhost
+  gather_facts: no
+  collections:
+    - kubernetes.core
+  vars_files:
+    - vars.yaml
+  tasks:
+  - name: Template Keycloak Certificate
+    ansible.builtin.template:
+      src: keycloak/certificate.yaml.j2
+      dest: /tmp/certificate.yaml
+
+  - name: Create Keycloak Certificate
+    kubernetes.core.k8s:
+      state: present
+      src: /tmp/certificate.yaml
+      namespace: "{{ deployment_namespace }}"
+
+  - name: Template Keycloak Instance
+    ansible.builtin.template:
+      src: keycloak/rhbk.yaml.j2
+      dest: /tmp/rhbk.yaml
+
+  - name: Create Keycloak instance
+    kubernetes.core.k8s:
+      state: present
+      src: /tmp/rhbk.yaml
+      namespace: "{{ deployment_namespace }}"
+
+  - name: Template Keycloak Admin Route
+    ansible.builtin.template:
+      src: keycloak/admin-route.yaml.j2
+      dest: /tmp/admin-route.yaml
+    when: keycloak.management_route.enabled
+
+  - name: Create Keycloak Admin Route
+    kubernetes.core.k8s:
+      state: present
+      src: /tmp/admin-route.yaml
+      namespace: "{{ deployment_namespace }}"
+    when: keycloak.management_route.enabled
+
+  - name: Remove Keycloak Admin Route if not enabled
+    kubernetes.core.k8s:
+      state: absent
+      kind: Route
+      name: keycloak-admin
+      namespace: "{{ deployment_namespace }}"
+    when: not keycloak.management_route.enabled
+
+  - name: Wait for Keycloak to be ready
+    kubernetes.core.k8s_info: 
+      kind: Pod
+      namespace: "{{ deployment_namespace }}"
+      label_selectors:
+        - app = keycloak
+    register: keycloak_pods
+    until: 
+      keycloak_pods.resources | length > 0 and
+      keycloak_pods.resources[0].status.phase == 'Running' and
+      keycloak_pods.resources[0].status.containerStatuses[0].ready
+    retries: 10
+    delay: 5
+
+- name: Change Keycloak admin password
+  ansible.builtin.import_playbook: change-keycloak-admin-password.yaml
+  when: disable_admin_password_change is not defined or not disable_admin_password_change
+
+- name: Configure Keycloak
+  ansible.builtin.import_playbook: configure.yaml

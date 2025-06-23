@@ -1,0 +1,43 @@
+kind: Keycloak
+apiVersion: k8s.keycloak.org/v2alpha1
+metadata:
+  name: keycloak
+  labels:
+    app: sso
+spec:
+  instances: {{ keycloak.instances | default(3) }}
+  hostname:
+{% if keycloak.management_route.enabled %}
+    admin: "https://{{ keycloak.management_route.subdomain }}.{{ domain_name }}/"
+    hostname: "https://{{ keycloak.auth_subdomain }}.{{ domain_name }}/"
+{% else %}
+    hostname: "{{ keycloak.auth_subdomain }}.{{ domain_name }}"
+{% endif %}
+  http:
+    tlsSecret: keycloak-tls
+  db:
+    database: keycloak
+    host: "postgres-rhbk-pgbouncer.{{ deployment_namespace }}.svc"
+    passwordSecret:
+      name: postgres-rhbk-pguser-keycloak
+      key: password
+    port: 5432
+    schema: rhbk
+    usernameSecret:
+      name: postgres-rhbk-pguser-keycloak
+      key: user
+    vendor: postgres
+{% if keycloak.management_route.enabled %}
+  httpManagement:
+    port: 9090
+{% endif %}
+  ingress:
+    enabled: true
+  networkPolicy:
+    enabled: true
+  proxy:
+    headers: xforwarded
+{% if keycloak.log_level or keycloak.additionalOptions %}
+  additionalOptions:
+    {{ keycloak.additionalOptions | to_nice_yaml(sort_keys=False) | indent(4) }}
+{% endif %}
