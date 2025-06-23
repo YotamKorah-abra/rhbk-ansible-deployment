@@ -1,9 +1,9 @@
-deployment_namespace: site-1
+deployment_namespace: keycloak
 password_length: 32
-domain_name: apps.cluster-2lrzw.2lrzw.sandbox2247.opentlc.com
+domain_name: example.com
 
 cert_manager:
-  issuer_name: zerossl-production-ec2
+  issuer_name: my-issuer
   issuer_kind: ClusterIssuer
 
 keycloak:
@@ -11,14 +11,14 @@ keycloak:
   instances: 3
   management_route:
     enabled: false
-    subdomain: kc-admin
-  auth_subdomain: sso
+    subdomain: keycloak-admin
+  auth_subdomain: keycloak
   additionalOptions:
     - name: log-level
       value: INFO
   image:   # Warning: Changing the image may cause temporary downtime due to strategy=recreate rollout.
-    repository: yotamk4abra/keycloak
-    tag: 26.2.0
-    optimized: true
+    repository: 
+    tag: 
+    optimized: false
 
 disable_admin_password_change: false
