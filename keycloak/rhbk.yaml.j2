@@ -41,3 +41,7 @@ spec:
   additionalOptions:
     {{ keycloak.additionalOptions | to_nice_yaml(sort_keys=False) | indent(4) }}
 {% endif %}
+{% if keycloak.image is defined and keycloak.image.repository is defined  and keycloak.image.repository %}
+  image: "{{ keycloak.image.repository }}:{{ keycloak.image.tag }}"
+{% endif %}
+  startOptimized: {{ keycloak.image.optimized | default(true) }}

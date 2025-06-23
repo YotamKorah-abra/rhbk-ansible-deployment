@@ -114,6 +114,10 @@
       namespace: "{{ deployment_namespace }}"
     when: not keycloak.management_route.enabled
 
+  - name: Wait for Keycloak to be ready (initial wait)
+    wait_for:
+      timeout: 10
+
   - name: Wait for Keycloak to be ready
     kubernetes.core.k8s_info: 
       kind: Pod

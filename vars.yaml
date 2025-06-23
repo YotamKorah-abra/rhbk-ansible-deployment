@@ -15,6 +15,10 @@ keycloak:
   auth_subdomain: sso
   additionalOptions:
     - name: log-level
-      value: DEBUG
+      value: INFO
+  image:   # Warning: Changing the image may cause temporary downtime due to strategy=recreate rollout.
+    repository: yotamk4abra/keycloak
+    tag: 26.2.0
+    optimized: true
 
 disable_admin_password_change: false
