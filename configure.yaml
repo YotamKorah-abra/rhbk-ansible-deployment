@@ -27,7 +27,7 @@
 
   - name: Configure master realm
     community.general.keycloak_realm:
-      auth_keycloak_url: "https://sso.apps.cluster-2lrzw.2lrzw.sandbox2247.opentlc.com"
+      auth_keycloak_url: "https://{{ keycloak.auth_subdomain }}.{{ domain_name }}"
       auth_username: "{{ keycloak_admin_username }}"
       auth_password: "{{ keycloak_admin_password }}"
       auth_realm: "master"
@@ -51,7 +51,7 @@
 
   - name: Configure Application Realm
     community.general.keycloak_realm:
-      auth_keycloak_url: "https://sso.apps.cluster-2lrzw.2lrzw.sandbox2247.opentlc.com"
+      auth_keycloak_url: "https://{{ keycloak.auth_subdomain }}.{{ domain_name }}"
       auth_username: "{{ keycloak_admin_username }}"
       auth_password: "{{ keycloak_admin_password }}"
       auth_realm: "master"
