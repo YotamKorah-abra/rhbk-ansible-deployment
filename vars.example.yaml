@@ -20,5 +20,15 @@ keycloak:
     repository: 
     tag: 
     optimized: false
+  operator:
+    starting_csv: rhbk-operator.v26.2.5-opr.1
+    channel: stable-v26
+    source: redhat-operators
+
+crunchy:
+  operator:
+    starting_csv: postgresoperator.v5.8.2
+    channel: v5
+    source: certified-operators
 
 disable_admin_password_change: false
