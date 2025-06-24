@@ -12,20 +12,6 @@
       kind: Namespace
       name: "{{ deployment_namespace }}"
 
-  - name: Create RHBK Operator Group
-    kubernetes.core.k8s:
-      state: present
-      namespace: "{{ deployment_namespace }}"
-      definition:
-        apiVersion: operators.coreos.com/v1
-        kind: OperatorGroup
-        metadata:
-          name: rhbk-operator-group
-          namespace: "{{ deployment_namespace }}"
-        spec:
-          targetNamespaces:
-            - "{{ deployment_namespace }}"
-  
   - name: Create Crunchy Operator Subscription
     kubernetes.core.k8s:
       state: present
@@ -43,23 +29,6 @@
           source: "{{ crunchy.operator.source }}"
           sourceNamespace: openshift-marketplace
 
-  - name: Create RHBK Operator Subscription
-    kubernetes.core.k8s:
-      state: present
-      definition:
-        apiVersion: operators.coreos.com/v1alpha1
-        kind: Subscription
-        metadata:
-          name: rhbk-operator
-          namespace: "{{ deployment_namespace }}"
-        spec:
-          channel: "{{ keycloak.operator.channel }}"
-          installPlanApproval: Automatic
-          name: rhbk-operator
-          source: "{{ keycloak.operator.source }}"
-          sourceNamespace: openshift-marketplace
-          startingCSV: "{{ keycloak.operator.starting_csv }}"
-
   - name: Wait for Crunchy Operator to be ready
     kubernetes.core.k8s_info:
       api_version: operators.coreos.com/v1alpha1
@@ -71,20 +40,6 @@
       crunchy_operator_subscription.resources | length > 0 and
       crunchy_operator_subscription.resources[0].status and
       crunchy_operator_subscription.resources[0].status.phase == 'Succeeded'
-    retries: 10
-    delay: 10
-
-  - name: Wait for RHBK Operator to be ready
-    kubernetes.core.k8s_info:
-      api_version: operators.coreos.com/v1alpha1
-      kind: ClusterServiceVersion
-      namespace: "{{ deployment_namespace }}"
-      name: "{{ keycloak.operator.starting_csv }}"
-    register: rhbk_operator_subscription
-    until:
-      rhbk_operator_subscription.resources | length > 0 and
-      rhbk_operator_subscription.resources[0].status and
-      rhbk_operator_subscription.resources[0].status.phase == 'Succeeded'
     retries: 10
     delay: 10
 
@@ -155,6 +110,12 @@
   vars_files:
     - vars.yaml
   tasks:
+  - name: Create Deployment namespace
+    kubernetes.core.k8s:
+      state: present
+      kind: Namespace
+      name: "{{ deployment_namespace }}"
+
   - name: Template Keycloak Certificate
     ansible.builtin.template:
       src: keycloak/certificate.yaml.j2
@@ -165,6 +126,51 @@
       state: present
       src: /tmp/certificate.yaml
       namespace: "{{ deployment_namespace }}"
+
+  - name: Create RHBK Operator Group
+    kubernetes.core.k8s:
+      state: present
+      namespace: "{{ deployment_namespace }}"
+      definition:
+        apiVersion: operators.coreos.com/v1
+        kind: OperatorGroup
+        metadata:
+          name: rhbk-operator-group
+          namespace: "{{ deployment_namespace }}"
+        spec:
+          targetNamespaces:
+            - "{{ deployment_namespace }}"
+
+  - name: Create RHBK Operator Subscription
+    kubernetes.core.k8s:
+      state: present
+      definition:
+        apiVersion: operators.coreos.com/v1alpha1
+        kind: Subscription
+        metadata:
+          name: rhbk-operator
+          namespace: "{{ deployment_namespace }}"
+        spec:
+          channel: "{{ keycloak.operator.channel }}"
+          installPlanApproval: Automatic
+          name: rhbk-operator
+          source: "{{ keycloak.operator.source }}"
+          sourceNamespace: openshift-marketplace
+          startingCSV: "{{ keycloak.operator.starting_csv }}"
+
+  - name: Wait for RHBK Operator to be ready
+    kubernetes.core.k8s_info:
+      api_version: operators.coreos.com/v1alpha1
+      kind: ClusterServiceVersion
+      namespace: "{{ deployment_namespace }}"
+      name: "{{ keycloak.operator.starting_csv }}"
+    register: rhbk_operator_subscription
+    until:
+      rhbk_operator_subscription.resources | length > 0 and
+      rhbk_operator_subscription.resources[0].status and
+      rhbk_operator_subscription.resources[0].status.phase == 'Succeeded'
+    retries: 10
+    delay: 10
 
   - name: Wait for Keycloak Certificate to be ready
     kubernetes.core.k8s_info:
