@@ -1,0 +1,175 @@
+- name: Connect Openshift to Keycloak
+  hosts: localhost
+  gather_facts: no
+  collections:
+    - kubernetes.core
+  vars_files:
+    - vars.yaml
+  tasks:
+  - name: Get Keycloak Admin
+    kubernetes.core.k8s_info:
+      kind: Secret
+      namespace: "{{ deployment_namespace }}"
+      name: keycloak-admin
+    register: keycloak_admin_secret
+
+  - name: Ensure Keycloak Admin secret is found
+    ansible.builtin.assert:
+      that:
+        - keycloak_admin_secret.resources | length > 0
+      fail_msg: "No Keycloak Admin secret found"
+      success_msg: "Keycloak Admin secret found: {{ keycloak_admin_secret.resources[0].metadata.name }}"
+
+  - name: Set Keycloak admin cred facts
+    set_fact:
+      keycloak_admin_username: "{{ keycloak_admin_secret.resources[0].data.username | b64decode }}"
+      keycloak_admin_password: "{{ keycloak_admin_secret.resources[0].data.password | b64decode }}"
+
+  - name: Get Openshift Client Secret
+    kubernetes.core.k8s_info:
+      kind: Secret
+      namespace: "openshift-config"
+      name: openshift-client-secret
+    register: openshift_client_secret_info
+
+  - name: Generate Openshift Client Secret
+    vars:
+      openshift_client_secret_gen: "{{ lookup('password', '/dev/null length=' + password_length | string) }}"
+    ansible.builtin.set_fact:
+      openshift_client_secret: "{{ openshift_client_secret_gen }}"
+    when: openshift_client_secret_info.resources | length == 0
+
+  - name: Extract Openshift Client Secret
+    ansible.builtin.set_fact:
+      openshift_client_secret: "{{ openshift_client_secret_info.resources[0].data.clientSecret | b64decode }}"
+    when: openshift_client_secret_info.resources | length > 0
+
+  - name: Save Openshift Client Secret
+    kubernetes.core.k8s:
+      state: present
+      definition:
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          namespace: "openshift-config"
+          name: openshift-client-secret
+        data:
+          clientSecret: "{{ openshift_client_secret | b64encode }}"
+
+  - name: Create Openshift client in Keycloak
+    community.general.keycloak_client:
+      auth_keycloak_url: "https://{{ keycloak.auth_subdomain }}.{{ domain_name }}"
+      auth_username: "{{ keycloak_admin_username }}"
+      auth_password: "{{ keycloak_admin_password }}"
+      auth_realm: "master"
+      realm: "applications"
+      state: present
+      client_id: "openshift"
+      enabled: true
+      client_authenticator_type: "client-secret"
+      name: "OpenShift"
+      protocol: "openid-connect"
+      protocol_mappers:
+        - name: group-mapper
+          protocol: "openid-connect"
+          protocolMapper: "oidc-group-membership-mapper"
+          consentRequired: false
+          config:
+            "full.path": "false"
+            "claim.name": "groups"
+            "id.token.claim": "true"
+            "access.token.claim": "true"
+            "userinfo.token.claim": "true"
+            "group.hierarchy.enabled": "false"
+      public_client: false
+      redirect_uris:
+        - "https://oauth-openshift.{{ openshift.apps_domain }}/oauth2callback/*"
+      secret: "{{ openshift_client_secret }}"
+      web_origins:
+        - "https://oauth-openshift.{{ openshift.apps_domain }}"
+        - "https://console-openshift-console.{{ openshift.apps_domain }}"
+
+  - name: Add Keycloak as OIDC provider
+    kubernetes.core.k8s:
+      state: present
+      definition:
+        apiVersion: config.openshift.io/v1
+        kind: OAuth
+        metadata:
+          name: cluster
+        spec:
+          identityProviders:
+          - name: keycloak 
+            mappingMethod: claim 
+            type: OpenID
+            openID:
+              clientID: openshift
+              clientSecret: 
+                name: openshift-client-secret
+              claims: 
+                preferredUsername:
+                - preferred_username
+                name:
+                - name
+                email:
+                - email
+                groups:
+                - groups
+              issuer: "https://{{ keycloak.auth_subdomain }}.{{ domain_name }}/realms/applications"
+          - htpasswd:
+              fileData:
+                name: htpasswd
+            mappingMethod: claim
+            name: htpasswd_provider
+            type: HTPasswd
+
+  - name: Create Openshift Admin Group
+    community.general.keycloak_group:
+      auth_keycloak_url: "https://{{ keycloak.auth_subdomain }}.{{ domain_name }}"
+      auth_username: "{{ keycloak_admin_username }}"
+      auth_password: "{{ keycloak_admin_password }}"
+      auth_realm: "master"
+      realm: "applications"
+      state: present
+      name: "openshift-admins"
+
+  - name: Create Openshift Admin User
+    community.general.keycloak_user:
+      auth_keycloak_url: "https://{{ keycloak.auth_subdomain }}.{{ domain_name }}"
+      auth_username: "{{ keycloak_admin_username }}"
+      auth_password: "{{ keycloak_admin_password }}"
+      auth_realm: "master"
+      realm: "applications"
+      state: present
+      username: "openshift-admin"
+      email: "openshift-admin@{{ domain_name }}"
+      enabled: true
+      email_verified: true
+      firstName: "OpenShift"
+      lastName: "Admin"
+      credentials:
+        - type: password
+          value: "password"
+          temporary: false
+      groups:
+        - name: "openshift-admins"
+          state: present
+
+  - name: Create RoleBinding
+    kubernetes.core.k8s:
+      state: present
+      namespace: "openshift-config"
+      definition:
+        kind: ClusterRoleBinding
+        apiVersion: rbac.authorization.k8s.io/v1
+        metadata:
+          name: openshift-admins
+        subjects:
+          - kind: Group
+            apiGroup: rbac.authorization.k8s.io
+            name: openshift-admins
+        roleRef:
+          apiGroup: rbac.authorization.k8s.io
+          kind: ClusterRole
+          name: cluster-admin
+

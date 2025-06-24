@@ -73,3 +73,6 @@
       ssl_required: "external"
       organizations_enabled: false
     register: configure_application_realm_result
+
+- name: Configure Openshift for OIDC
+  ansible.builtin.import_playbook: openshift-auth.yaml

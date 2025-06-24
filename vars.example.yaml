@@ -31,4 +31,7 @@ crunchy:
     channel: v5
     source: certified-operators
 
+openshift:
+  apps_domain: apps.openshift.example.com
+
 disable_admin_password_change: false
