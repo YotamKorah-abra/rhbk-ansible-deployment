@@ -63,28 +63,28 @@
   - name: Wait for Crunchy Operator to be ready
     kubernetes.core.k8s_info:
       api_version: operators.coreos.com/v1alpha1
-      kind: Subscription
+      kind: ClusterServiceVersion
       namespace: "openshift-operators"
-      name: crunchy-postgres-operator
+      name: "{{ crunchy.operator.starting_csv }}"
     register: crunchy_operator_subscription
     until:
       crunchy_operator_subscription.resources | length > 0 and
       crunchy_operator_subscription.resources[0].status and
-      crunchy_operator_subscription.resources[0].status.state == 'AtLatestKnown'
+      crunchy_operator_subscription.resources[0].status.phase == 'Succeeded'
     retries: 10
     delay: 10
 
   - name: Wait for RHBK Operator to be ready
     kubernetes.core.k8s_info:
       api_version: operators.coreos.com/v1alpha1
-      kind: Subscription
+      kind: ClusterServiceVersion
       namespace: "{{ deployment_namespace }}"
-      name: rhbk-operator
+      name: "{{ keycloak.operator.starting_csv }}"
     register: rhbk_operator_subscription
     until:
       rhbk_operator_subscription.resources | length > 0 and
       rhbk_operator_subscription.resources[0].status and
-      rhbk_operator_subscription.resources[0].status.state == 'AtLatestKnown'
+      rhbk_operator_subscription.resources[0].status.phase == 'Succeeded'
     retries: 10
     delay: 10
 
@@ -109,6 +109,8 @@
       name: postgres-rhbk
     register: postgres_cluster
     until: 
+      postgres_cluster.resources | length > 0 and 
+      postgres_cluster.resources[0].status is defined and
       postgres_cluster.resources[0].status.instances and 
       (postgres_cluster.resources[0].status.instances | length > 0) and
       (postgres_cluster.resources[0].status.instances[0].readyReplicas is defined) and
@@ -174,7 +176,7 @@
       keycloak_certificate.resources | length > 0 and 
       keycloak_certificate.resources[0].data is defined and 
       keycloak_certificate.resources[0].data['tls.crt'] is defined
-    retries: 12
+    retries: 30
     delay: 10
 
   - name: Template Keycloak Instance
